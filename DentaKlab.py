@@ -1,5 +1,5 @@
 from datetime import date
-
+import db
 from keyboards import generate_calendar_days, \
     generate_calendar_months, EMTPY_FIELD, DAYS
 from filters import calendar_factory, calendar_zoom, bind_filters
@@ -8,6 +8,7 @@ from telebot import types, TeleBot #Импортируем все необход
 month_name = ['-','Января','Февраля','Марта','Апреля','Мая','Июня','Июля','Августа','Сентября','Октября','Ноября','Декабря']
 days_register = []
 feedback = []
+users = []
 main_menu = ['1️⃣Главное','2️⃣Личный кабинет','3️⃣Вызов оператора','4️⃣Часто задаваемые вопросы','5️⃣Оставить отзыв', '6️⃣О создателях']
 main_menu_buttons = ['Услуги и цены','Врачи','В начало']
 lk_buttons = ['Записаться на прием','Текущие записи','В начало']
@@ -33,29 +34,38 @@ doctors_description = {'Бекреев Валерий Валентинович':
 bot = TeleBot('5303187878:AAF0YYm-d9IhzR6snAeJudIxM2TX33NW1DY') #Добавляем токен бота
 @bot.message_handler(commands=['start']) #сообщения от бота в виде приветствия
 def begin(message):
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("Приступить!", callback_data='Приступить!'))
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add(types.KeyboardButton("Регистрация", request_contact = True))
     send_message = f'Привет, <i><b>{message.from_user.first_name}</b></i>!\n'\
                    f'Мы рады тебя приветствовать в нашем боте <i><b>DentaKlad</b></i>. \n'\
-                   f'Для начала работы просто нажми на кнопку <b>Приступить</b>, после чего у тебя появятся кнопки!\n'\
+                   f'Для начала работы мы должны внести тебя в нашу базу, этому просто нажми на кнопку <b>Регистрация</b>, после чего у тебя появятся кнопки!\n'\
                    f'Если вдруг панель из кнопок исчезнет, просто нажми на квадратик с 4 точками и оно откроется\n\n'\
                    f'P.S. кнопку <b>Запись</b> не трогай, она в разработке, хотя ради прикола поклацать можешь)'
     bot.send_message(message.chat.id, send_message, parse_mode = 'html', reply_markup = markup)
 
-@bot.callback_query_handler(func=lambda c: c.data in ['Приступить!','Контакты','Реквизиты компании','Гарантии']) #Выполнение команд на кнопки, прикрепленные к сообщению
+@bot.message_handler(content_types=['contact'])
+def number(message):
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    for context in main_menu:
+        markup.add(types.KeyboardButton(context))
+    send_message = f'Отлично, вы были зарегистрированы! Перед вами открылось главное меню, которым вы можете пользоваться!'
+    bot.send_message(message.from_user.id, send_message, parse_mode='html', reply_markup=markup)
+    users.append([message.contact.user_id, message.contact.phone_number, message.contact.first_name, message.contact.last_name])
+    name = str(message.contact.first_name) + str(message.contact.last_name)
+    db.add_row(name, message.contact.phone_number)
+    for i in range(len(users)):
+        print(f"Пользователь {i + 1}:\n id:{users[i][0]}\n Телефон:{users[i][1]}\n Имя:{users[i][2]}\n Фамилия:{users[i][3]}\n")
+    db.all_rows()
+
+@bot.callback_query_handler(func=lambda c: c.data in ['Контакты','Реквизиты компании','Гарантии']) #Выполнение команд на кнопки, прикрепленные к сообщению
 def start_programm(callback):
     name = callback.data
-    if name == 'Приступить!':
-        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-        for context in main_menu:
-            markup.add(types.KeyboardButton(context))
-        send_message = f'Вы открыли главное меню'
-        bot.send_message(callback.from_user.id, send_message, parse_mode='html', reply_markup=markup)
-    elif name == 'Контакты':
+    if name == 'Контакты':
+        bot.send_location(callback.from_user.id, 55.660327, 37.515121)
         mess = f'📩Наш адрес:\n      г.Москва, м.Калужская,\n      ул.Обручева, дом 11\n' \
                f'❎Работаем без выходных\n      С 8:00 до 22:00\n' \
-               f'📱Телефон: \n       +7 (495) 120-10-91'
-        bot.answer_callback_query(callback.id, mess, show_alert = True)
+               f'📱Телефон: \n       +74951201091'
+        bot.send_message(callback.from_user.id, mess, parse_mode='html')
     elif name == 'Гарантии':
         send_message = f'Гарантия и прогнозы предстоящего лечения обговариваются лечащим врачом отдельно для каждого случая ' \
                        f'конкретно и указываются в медицинской карте пациента. Все гарантийные обязательства клиники указаны в «Положении о гарантийных обязательствах», ' \
@@ -70,14 +80,14 @@ def start_programm(callback):
 
 @bot.message_handler(content_types=['text']) #Блок, отвечающий за действия всех кнопок на панели
 def all_message(message):
-    if message.text == 'В начало':
+    if message.text == main_menu_buttons[2]:
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
         for context in main_menu:
             markup.add(types.KeyboardButton(context))
         send_message = f'Вы открыли начальное меню'
         bot.send_message(message.chat.id, send_message, parse_mode='html', reply_markup=markup)
 
-    if message.text == main_menu[0]:
+    elif message.text == main_menu[0]:
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
         for context in main_menu_buttons:
             markup.add(types.KeyboardButton(context))
@@ -88,7 +98,7 @@ def all_message(message):
         mess = f'<b>Вы зашли в главное🌐</b>\n\n'\
                f'<i>Вы можете выбрать интересующие вас кнопки на панели\nЕсли вы хотите получить </i>'\
                f'<i>информацию о нашей клинике, нажмите кнопки ниже и перед вами высветится окошко с описанием</i>'
-        bot.send_message(message.chat.id, '..........', parse_mode='html', reply_markup = markup)
+        bot.send_message(message.chat.id, '...Загрузка...', parse_mode='html', reply_markup = markup)
         bot.send_message(message.chat.id, mess, parse_mode='html', reply_markup = markup1)
 
     elif message.text == main_menu[1]:
@@ -97,13 +107,24 @@ def all_message(message):
             markup.add(types.KeyboardButton(context))
         bot.send_message(message.chat.id, 'Вы открыли свой личный кабинет🏠', parse_mode='html', reply_markup = markup)
 
+    elif message.text == main_menu[3]:
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("Смотреть", url="https://dentaklad.ru/paczientam/"))
+        mess = f'Нажав кнопку <b><i>Смотреть</i></b>, вы сможете перейти на наш сайт и посмотреть часто задаваемые вопросы'
+        bot.send_message(message.chat.id, mess, parse_mode='html', reply_markup=markup)
     elif message.text == main_menu[4]:
-        mess = bot.send_message(message.chat.id, '<b>Пожалуйста, напишите ваш отзыв</b>', parse_mode='html')
+        mess = bot.send_message(message.chat.id, '<b>Пожалуйста, напишите ваш отзыв о нашей клинике!</b>', parse_mode='html')
         bot.register_next_step_handler(mess, answer)
 
     elif message.text == main_menu[5]:
         send_message = f'Данный бот был разработан командой из ВШЭ как проект по программированию'
         bot.send_message(message.chat.id, send_message, parse_mode='html')
+
+    elif message.text == main_menu_buttons[0]:
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("Смотреть", url="https://dentaklad.ru/czeny/"))
+        mess = f'Нажав кнопку <b><i>Смотреть</i></b>, вы сможете перейти на наш сайт и увидеть цены'
+        bot.send_message(message.chat.id, mess, parse_mode='html', reply_markup=markup)
 
     elif message.text == main_menu_buttons[1]:
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
@@ -115,13 +136,14 @@ def all_message(message):
                f'Выберите работника из списка для просмотра информации'
         bot.send_message(message.chat.id, mess, parse_mode='html', reply_markup=markup)
 
-    elif message.text in doctors:
+    elif message.text in doctors and message.text != doctors[-1]:
         send_message = f'<b>{message.text}</b>\n\n<i>{doctors_description[message.text]}</i>'
         bot.send_message(message.chat.id, send_message, parse_mode='html')
 
     elif message.text == lk_buttons[0]:
         now = date.today()
         bot.send_message(message.chat.id, '<b>Выберите день, в который вы бы хотели записаться к нам📅</b>', parse_mode='html', reply_markup=generate_calendar_days(year=now.year, month=now.month))
+
     elif message.text == lk_buttons[1]:
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
         register = f'{days_register[0][2]} {month_name[int(days_register[0][1])]} {days_register[0][0]}'
@@ -136,6 +158,14 @@ def all_message(message):
 
 def answer(message): #Ответ на отзыв
     feedback.append(message.text)
+    phone_number = 0
+    try:
+        for i in users:
+            if i[0] == message.from_user.id:
+                phone_number = i[1]
+    except Exception as ex:
+        print(ex)
+    db.add_comment(message.text, phone_number)
     bot.send_message(message.chat.id, 'Спасибо за ваш отзыв!')
 
 @bot.callback_query_handler(func=None, calendar_config=calendar_factory.filter()) #Генерация клавиатуры из кнопок при перемотке нового месяца
